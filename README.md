@@ -10,7 +10,7 @@ The demo is intentionally written as an audit trail rather than an app. The main
 
 First step: identify the product from the source image.
 
-![ARM & HAMMER Clean Burst detergent source photo](./assets/IMG_1775.JPG)
+![ARM & HAMMER Clean Burst detergent source photo](./assets/IMG_1775_cropped.JPG)
 
 Last step: verify the item in the signed-in Amazon shopping cart.
 
