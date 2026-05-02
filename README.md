@@ -6,6 +6,16 @@ The demo is intentionally written as an audit trail rather than an app. The main
 
 - [Amazon cart automation report](./amazon_cart_process_report_2026-05-02.md)
 
+## Process Snapshots
+
+First step: identify the product from the source image.
+
+![ARM & HAMMER Clean Burst detergent source photo](./assets/IMG_1775.JPG)
+
+Last step: verify the item in the signed-in Amazon shopping cart.
+
+![Amazon shopping cart with detergent added](./assets/in_shopping_cart.jpg)
+
 ## What This Demonstrates
 
 - Using local image tooling to inspect an uploaded product photo.
@@ -43,6 +53,6 @@ Browser Use is open source and licensed under MIT:
 
 ## Safety Notes
 
-The local source photo and generated image crops are not committed. The original photo contained camera metadata, so the repo keeps only the Markdown documentation.
+The committed images in `assets/` are metadata-stripped copies for documentation. The original local photo and generated scratch crops are not committed.
 
 The automation stopped at the shopping cart. It did not open or submit checkout.

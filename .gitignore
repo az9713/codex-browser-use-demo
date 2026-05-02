@@ -6,6 +6,11 @@
 *.heic
 *.png
 
+# Repo-safe, metadata-stripped demo images.
+!assets/
+!assets/*.JPG
+!assets/*.jpg
+
 # Local scratch/agent files.
 .ignore/
 .browser-use/

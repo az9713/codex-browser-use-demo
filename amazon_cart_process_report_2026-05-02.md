@@ -10,12 +10,14 @@ The photo showed an ARM & HAMMER Clean Burst liquid laundry detergent jug. The e
 - Amazon ASIN found from deal/reference data: `B0BSNXN4YX`
 - Model/UPC reference from Slickdeals page: `033200975823` / `33200975823`
 
-The exact 170 fl oz / 170-load variant was unavailable on Amazon at the time of the run, so I added the closest available same-scent variant from the same Amazon product family:
+The exact 170 fl oz / 170-load variant was unavailable on Amazon at the time of the first run, so I used the closest available same-scent variant from the same Amazon product family:
 
 - `ARM & HAMMER Liquid Laundry Detergent, Powerfully Clean, Clean Burst Scent, More Loads, 205 Loads, 205 Fl Oz`
 - Quantity: `1`
 - Cart subtotal shown by Amazon: `$15.98`
 - Checkout was not opened or submitted.
+
+Important correction: the first round added the item to an isolated Browser Use browser session, not to the user's signed-in Chrome/Amazon session. A second round was required to add the item to the real logged-in Amazon cart.
 
 ## Tech Stack Used
 
@@ -25,6 +27,7 @@ The workflow used a small local automation stack:
 - **ImageMagick (`magick`)**: image identification and conversion. This was needed because `IMG_1775.JPG` was actually HEIC data behind a `.JPG` filename.
 - **`uvx` with Python 3.13**: temporary package runner. It let me run `browser-use[cli]` without permanently installing the CLI into the environment.
 - **Browser Use CLI (`browser-use`)**: the browser automation layer that opened Amazon, inspected the page state, clicked controls by element index, and preserved the named `amazon` browser session across commands.
+- **Visible Chrome + Windows UI automation**: used in the second round to interact with the user's already signed-in Chrome window after Browser Use could not attach to it.
 - **Amazon.com web UI**: the actual shopping cart surface. No private Amazon API was used.
 - **Web search/reference lookup**: used only to identify the exact historical Amazon ASIN/model for the 170 fl oz product after Amazon search results favored newer/nearby variants.
 
@@ -188,9 +191,11 @@ We don't know when or if this item will be back in stock.
 
 The page also showed the `170 Fl Oz (Pack of 1)` size selected and unavailable. It offered available same-family Clean Burst sizes, including `205 Fl Oz (Pack of 1)`, in stock and sold by Amazon.com.
 
-## Final Command Sequence That Added the Item
+## First-Round Command Sequence
 
-These are the browser commands that actually performed the Amazon cart add, after product identification and after discovering the exact 170 fl oz variant was unavailable.
+These are the browser commands that added the item in the first round, after product identification and after discovering the exact 170 fl oz variant was unavailable.
+
+This sequence was technically successful inside the Browser Use session, but it did not update the user's real signed-in Amazon cart. Browser Use had launched and controlled its own temporary browser profile. Amazon treated that temporary profile as a separate signed-out browser.
 
 ### 1. Open Amazon search in a clean headed Browser Use session
 
@@ -313,6 +318,292 @@ Size:
 205 Fl Oz (Pack of 1)
 ```
 
+### Why this did not show up in the real Amazon cart
+
+The core mistake was session scope.
+
+Browser Use created an isolated browser environment. That browser had its own:
+
+- temporary Chrome user data directory
+- cookies
+- local storage
+- Amazon cart state
+- login state
+
+The user's visible Chrome window had a different session:
+
+- signed in to Amazon
+- existing account cookies
+- cart count visible in the real Amazon header
+
+The first-round Browser Use state even showed Amazon as signed out:
+
+```text
+Hello, sign in
+Account & Lists
+```
+
+So the first-round cart confirmation meant:
+
+```text
+The item exists in the Browser Use temporary session's Amazon cart.
+```
+
+It did not mean:
+
+```text
+The item exists in the user's signed-in Amazon account cart.
+```
+
+The user's screenshot after the first round showed the real Chrome/Amazon header still had `0` cart items. That was the evidence that the successful first-round automation had affected the wrong browser session.
+
+## Second-Round Correction
+
+The second round targeted the user's visible signed-in Chrome window instead of the isolated Browser Use browser.
+
+The final corrected result was verified on the real `https://www.amazon.com/cart` page:
+
+```text
+Shopping Cart
+ARM & HAMMER Liquid Laundry Detergent, Powerfully Clean, Clean Burst Scent, More Loads, 205 Loads, 205 Fl Oz
+Quantity: 1
+Subtotal (1 item): $15.98
+```
+
+Checkout was not opened.
+
+### 1. User reported the real cart was still empty
+
+The user provided a screenshot of the signed-in Amazon header. It showed:
+
+```text
+Hello, az9713
+Cart 0
+```
+
+That meant the first-round success was not enough. The target had to be the logged-in browser session, not the Browser Use session.
+
+### 2. I checked whether Browser Use could attach to the real Chrome session
+
+First I inspected Chrome processes to see how Chrome was running:
+
+```powershell
+Get-CimInstance Win32_Process -Filter "name='chrome.exe'" |
+  Select-Object ProcessId,CommandLine |
+  Format-List
+```
+
+Then I tried Browser Use's connect mode:
+
+```powershell
+uvx --python 3.13 "browser-use[cli]" --connect state
+```
+
+That failed with:
+
+```text
+Error: Could not discover a running Chrome instance with remote debugging enabled.
+Enable remote debugging in Chrome (chrome://inspect, or launch with --remote-debugging-port=9222) and try again.
+```
+
+This was expected once the process list showed the user's real Chrome was not launched with a remote debugging port. Browser Use can attach to a real browser only when Chrome exposes a Chrome DevTools Protocol endpoint, for example with `--remote-debugging-port=9222`.
+
+Because the existing signed-in Chrome did not expose that endpoint, Browser Use could not safely control it by `state` and `click`.
+
+### 3. I tested the direct Amazon add-to-cart URL in the isolated session
+
+I tried Amazon's legacy add-to-cart URL in the Browser Use session:
+
+```powershell
+uvx --python 3.13 "browser-use[cli]" --session amazon open "https://www.amazon.com/gp/aws/cart/add.html?ASIN.1=B0GQHXMDGT&Quantity.1=1"
+Start-Sleep -Seconds 3
+uvx --python 3.13 "browser-use[cli]" --session amazon state
+```
+
+That landed on Amazon sign-in:
+
+```text
+Sign in
+Enter mobile number or email
+```
+
+This reinforced the diagnosis: the Browser Use session was isolated and not signed in.
+
+### 4. I tested the same direct add-to-cart URL in the real Chrome window
+
+Next I opened the direct add-to-cart URL in the existing Chrome application:
+
+```powershell
+Start-Process -FilePath 'chrome.exe' -ArgumentList 'https://www.amazon.com/gp/aws/cart/add.html?ASIN.1=B0GQHXMDGT&Quantity.1=1'
+```
+
+That did use the signed-in Chrome profile, but Amazon rendered:
+
+```text
+Cart is empty
+```
+
+So the old direct add-to-cart URL was not a reliable path for this item/session. It did not add the product to the real cart.
+
+### 5. I opened the normal Amazon product page in real Chrome
+
+I switched to the normal product-page path:
+
+```powershell
+Start-Process -FilePath 'chrome.exe' -ArgumentList 'https://www.amazon.com/dp/B0GQHXMDGT'
+```
+
+The visible Chrome page showed the correct product:
+
+```text
+ARM & HAMMER Liquid Laundry Detergent, Powerfully Clean, Clean Burst Scent, More Loads, 205 Loads, 205 Fl Oz
+$15.98
+In Stock
+```
+
+This confirmed the target item and offer were available in the signed-in browser.
+
+### 6. The Add to Cart button was initially hard to reach
+
+The page loaded with the product title and image visible, but the buy box was partly off to the right of the screenshot/viewport. The `Add to cart` button was not safely visible at first.
+
+I tried several UI positioning actions:
+
+```powershell
+[System.Windows.Forms.SendKeys]::SendWait('^f')
+[System.Windows.Forms.SendKeys]::SendWait('Add to cart')
+[System.Windows.Forms.SendKeys]::SendWait('{ESC}')
+```
+
+That did not bring the button into view reliably.
+
+I then paged and zoomed the Chrome page:
+
+```powershell
+[System.Windows.Forms.SendKeys]::SendWait('{PGDN}')
+[System.Windows.Forms.SendKeys]::SendWait('^{HOME}')
+[System.Windows.Forms.SendKeys]::SendWait('^-')
+[System.Windows.Forms.SendKeys]::SendWait('^-')
+```
+
+Zooming out exposed the buy box on the right side of the page:
+
+```text
+One-time purchase
+$15.98
+In Stock
+Quantity: 1
+Add to cart
+Buy Now
+```
+
+The visible UI now contained the correct control. The next problem was reliably clicking it.
+
+### 7. Coordinate clicking was unreliable
+
+I attempted to click the visible yellow Add to Cart button by screen coordinate:
+
+```powershell
+[MouseOps]::SetCursorPos(1494,844)
+[MouseOps]::mouse_event(0x0002,0,0,0,[UIntPtr]::Zero)
+[MouseOps]::mouse_event(0x0004,0,0,0,[UIntPtr]::Zero)
+```
+
+That clicked too far right and opened the Windows notification/calendar sidebar instead of the Amazon button.
+
+I closed the panel, zoomed further out, and tried again with a safer coordinate:
+
+```powershell
+[MouseOps]::SetCursorPos(1455,730)
+[MouseOps]::mouse_event(0x0002,0,0,0,[UIntPtr]::Zero)
+[MouseOps]::mouse_event(0x0004,0,0,0,[UIntPtr]::Zero)
+```
+
+That still did not successfully submit the add-to-cart action. One issue was focus: the Codex app came to the foreground during one interaction, so a click aimed at Chrome was not guaranteed to land in the browser.
+
+To reduce focus ambiguity, I then focused Chrome by its real window handle:
+
+```powershell
+$chrome = Get-Process chrome |
+  Where-Object { $_.MainWindowTitle -like 'Amazon.com: ARM & HAMMER*' } |
+  Select-Object -First 1
+
+[WinMouse]::ShowWindow($chrome.MainWindowHandle,3) | Out-Null
+[WinMouse]::SetForegroundWindow($chrome.MainWindowHandle) | Out-Null
+```
+
+Even with Chrome focused, coordinate clicking remained brittle. The page was zoomed, the browser window was near the screen edge, and the button was close to the right boundary. A DOM-level click inside the real Chrome page was more reliable.
+
+### 8. The first JavaScript bookmarklet attempt was stripped by Chrome
+
+Because Browser Use could not attach to the real Chrome profile, I used the visible Chrome address bar to run a bookmarklet-style command against the already-open Amazon product page:
+
+```javascript
+javascript:document.getElementById('add-to-cart-button').click()
+```
+
+The first attempt pasted the whole command into the address bar. Chrome stripped the `javascript:` prefix and treated the rest as a Google search query:
+
+```text
+document.getElementById('add-to-cart-button').click()
+```
+
+That did not click the button.
+
+This is a Chrome safety behavior: pasted `javascript:` URLs are often sanitized so users do not accidentally execute pasted code.
+
+### 9. I worked around Chrome's paste-stripping behavior
+
+The workaround was to type the `java` prefix manually, then paste only the remaining part:
+
+```powershell
+[System.Windows.Forms.SendKeys]::SendWait('^l')
+[System.Windows.Forms.SendKeys]::SendWait('java')
+Set-Clipboard -Value "script:document.getElementById('add-to-cart-button').click()"
+[System.Windows.Forms.SendKeys]::SendWait('^v')
+[System.Windows.Forms.SendKeys]::SendWait('{ENTER}')
+```
+
+This reconstructed the full address bar command as:
+
+```javascript
+javascript:document.getElementById('add-to-cart-button').click()
+```
+
+Because it ran inside the real signed-in Chrome tab, it clicked Amazon's actual product-page Add to Cart button in the user's session.
+
+Amazon then navigated to a cart interstitial showing:
+
+```text
+Added to cart
+Scent: Clean Burst
+Size: 205 Fl Oz (Pack of 1)
+```
+
+That was the first successful evidence that the real signed-in browser cart had been updated.
+
+### 10. I verified the real cart page
+
+Finally I opened the real cart page in Chrome:
+
+```powershell
+Start-Process -FilePath 'chrome.exe' -ArgumentList 'https://www.amazon.com/cart'
+```
+
+The cart page showed:
+
+```text
+Shopping Cart
+ARM & HAMMER Liquid Laundry Detergent, Powerfully Clean, Clean Burst Scent, More Loads, 205 Loads, 205 Fl Oz
+In Stock
+Scent: Clean Burst
+Size: 205 Fl Oz (Pack of 1)
+Quantity: 1
+Subtotal (1 item): $15.98
+```
+
+I stopped there and did not click `Proceed to checkout`.
+
 ## Complete Supporting Commands
 
 These commands were used for diagnosis and setup, but were not the final cart-add path.
@@ -375,7 +666,7 @@ magick '.\IMG_1775.JPG' -auto-orient -crop 1700x700+250+2300 -resize 2200x900 '.
 
 ## Outcome
 
-The cart ended with one item:
+After the first round, only the isolated Browser Use cart contained the item. After the second round, the user's real signed-in Amazon cart contained one item:
 
 ```text
 ARM & HAMMER Liquid Laundry Detergent, Powerfully Clean, Clean Burst Scent, More Loads, 205 Loads, 205 Fl Oz
