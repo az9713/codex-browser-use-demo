@@ -1,0 +1,11 @@
+# Local source images and generated inspection artifacts.
+*.JPG
+*.jpg
+*.jpeg
+*.HEIC
+*.heic
+*.png
+
+# Local scratch/agent files.
+.ignore/
+.browser-use/
