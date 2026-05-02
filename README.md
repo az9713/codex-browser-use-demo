@@ -6,16 +6,6 @@ The demo is intentionally written as an audit trail rather than an app. The main
 
 - [Amazon cart automation report](./amazon_cart_process_report_2026-05-02.md)
 
-## Process Snapshots
-
-First step: identify the product from the source image.
-
-![ARM & HAMMER Clean Burst detergent source photo](./assets/IMG_1775_cropped.JPG)
-
-Last step: verify the item in the signed-in Amazon shopping cart.
-
-![Amazon shopping cart with detergent added](./assets/in_shopping_cart.jpg)
-
 ## What This Demonstrates
 
 - Using local image tooling to inspect an uploaded product photo.
